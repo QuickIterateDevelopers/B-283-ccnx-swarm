@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B-283 CCNx セマンティック群ロボ通信デモ</title>
+<style>
+/* ==== 外部CDN依存禁止: 全CSSインライン ==== */
+:root{
+  --bg:#f4f6fa; --panel:#ffffff; --panel2:#eef1f6; --border:#d3d9e3;
+  --fg:#1a2230; --fg-dim:#5c6675; --accent:#2563eb; --accent-fg:#ffffff;
+  --field:#e7ecf3; --field-line:#c3ccd9;
+  --ok:#16a34a; --warn:#d97706; --err:#dc2626;
+  --log-bg:#0f1420; --log-fg:#cdd6e4; --log-dim:#7f8ba0;
+  --int:#3b82f6; --cobj:#22c55e; --iret:#ef4444;
+  --shadow:0 1px 3px rgba(20,30,50,.12);
+}
+:root[data-theme="dark"], html.dark{
+  --bg:#0c1017; --panel:#141b27; --panel2:#1c2431; --border:#2a3444;
+  --fg:#e6ebf3; --fg-dim:#94a1b5; --accent:#3b82f6; --accent-fg:#ffffff;
+  --field:#0f1622; --field-line:#26313f;
+  --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
+  --log-bg:#080b11; --log-fg:#cdd6e4; --log-dim:#6b7688;
+  --shadow:0 1px 3px rgba(0,0,0,.4);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c1017; --panel:#141b27; --panel2:#1c2431; --border:#2a3444;
+    --fg:#e6ebf3; --fg-dim:#94a1b5; --accent:#3b82f6; --accent-fg:#ffffff;
+    --field:#0f1622; --field-line:#26313f;
+    --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
+    --log-bg:#080b11; --log-fg:#cdd6e4; --log-dim:#6b7688;
+    --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg); color:var(--fg);
+  font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+  display:flex; flex-direction:column; height:100vh; overflow:hidden;
+}
+header{
+  display:flex; align-items:center; gap:12px; padding:8px 14px;
+  background:var(--panel); border-bottom:1px solid var(--border); flex:0 0 auto;
+}
+header h1{font-size:14px;font-weight:700;margin:0;letter-spacing:.2px}
+header .sub{color:var(--fg-dim);font-size:11px}
+header .spacer{flex:1}
+.conn{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--fg-dim)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--err);box-shadow:0 0 0 3px rgba(220,38,38,.15)}
+.dot.on{background:var(--ok);box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+button,select,input{font:inherit;color:inherit}
+.btn{
+  background:var(--panel2); border:1px solid var(--border); color:var(--fg);
+  padding:5px 10px; border-radius:6px; cursor:pointer; font-size:12px;
+}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.danger{background:var(--err);color:#fff;border-color:var(--err)}
+.btn.small{padding:3px 7px;font-size:11px}
+
+main{flex:1;display:grid;grid-template-columns:320px 1fr 236px;gap:0;min-height:0}
+@media(max-width:1080px){
+  /* 狭い画面: 右カラムを畳まず下ペイン(横並びカードグリッド)に回す */
+  main{grid-template-columns:320px 1fr;grid-template-rows:1fr auto}
+  main .rlist{grid-column:1 / -1;border-left:none;border-top:1px solid var(--border);max-height:180px}
+  main .rlist #rlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:6px}
+  main .rlist .rcard{margin-bottom:0}
+}
+@media(max-width:880px){main{grid-template-columns:1fr;overflow:auto}}
+
+/* ---- 右カラム: ロボ状態リスト(固定サイズカード。値が変わっても寸法が揺れない) ---- */
+.rlist{border-left:1px solid var(--border);background:var(--panel);overflow-y:auto;min-height:0;padding:6px}
+.rlist .rl-title{font-size:11px;color:var(--fg-dim);margin:2px 4px 8px;font-weight:700}
+.rcard{border:1px solid var(--border);border-left:4px solid #888;border-radius:7px;
+  padding:5px 8px;margin-bottom:6px;font-size:11px;background:var(--bg);
+  min-height:78px;box-sizing:border-box;overflow:hidden}
+.rcard.dead{opacity:.45}
+.rc-h{display:flex;justify-content:space-between;align-items:center;white-space:nowrap}
+.rc-team{font-weight:700;font-size:10px}
+.rc-st{display:flex;align-items:center;gap:5px;margin-top:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;white-space:nowrap;min-height:12px}
+.rc-st .sw{width:8px;height:8px;border-radius:50%;display:inline-block;flex:0 0 auto}
+.rc-say{color:var(--fg-dim);margin-top:1px;min-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-meta{color:var(--fg-dim);font-size:9.5px;margin-top:1px;min-height:12px;white-space:nowrap;overflow:hidden;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+/* ---- チーム得点バー(横棒。3チームの大小と首位を一目で) ---- */
+.standings{min-height:0;padding:8px 9px}
+.st-row{display:grid;grid-template-columns:52px 1fr 30px;align-items:center;gap:7px;
+  margin-bottom:6px}          /* 行間 = 隣接バー同士の面の隙間 */
+.st-row:last-child{margin-bottom:0}
+.st-name{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fg);white-space:nowrap}
+.st-sw{width:9px;height:9px;border-radius:2px;flex:0 0 auto}   /* 識別は色だけに頼らずラベルと併記 */
+.st-track{height:11px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.st-bar{height:100%;border-radius:0 4px 4px 0;   /* データ端だけ角丸・基線側は直角 */
+  transition:width .45s cubic-bezier(.22,.61,.36,1);min-width:0}
+.st-val{font-size:12px;font-weight:700;color:var(--fg);text-align:right;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.st-lead{font-size:10px}
+.st-foot{font-size:10px;color:var(--fg-dim);margin-top:7px;padding-top:6px;border-top:1px solid var(--border)}
+
+/* ---- 左カラム: (1)指示コンソール + (2)応答ウィンドウ ---- */
+.left{display:flex;flex-direction:column;border-right:1px solid var(--border);min-height:0;background:var(--panel)}
+.pane{display:flex;flex-direction:column;min-height:0}
+.pane-title{
+  font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--fg-dim); padding:8px 12px 4px; display:flex;align-items:center;gap:6px;
+}
+.pane-title .tag{font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--fg-dim)}
+
+.console{padding:6px 12px 12px;overflow:auto;border-bottom:1px solid var(--border);flex:0 0 auto}
+.grp{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:9px 10px;margin-bottom:9px}
+.grp h4{margin:0 0 7px;font-size:11px;font-weight:700;color:var(--fg)}
+.row{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.row label{font-size:11px;color:var(--fg-dim);min-width:42px}
+select,input[type=text],input[type=number]{
+  background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:4px 6px;
+}
+input[type=text]{flex:1;min-width:80px}
+input[type=number]{width:56px}
+select{min-width:70px}
+.hint{font-size:10px;color:var(--fg-dim);margin-top:2px}
+.preview{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--accent);word-break:break-all}
+
+/* (2) 応答ウィンドウ = ログ */
+.logwrap{flex:1;display:flex;flex-direction:column;min-height:0}
+.logbar{display:flex;align-items:center;gap:8px;padding:4px 12px;font-size:11px;color:var(--fg-dim);border-bottom:1px solid var(--border)}
+.logbar label{display:flex;align-items:center;gap:4px;cursor:pointer}
+.log{
+  flex:1;overflow-y:auto;background:var(--log-bg);color:var(--log-fg);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.5;
+  padding:6px 10px;
+}
+.log .ln{white-space:pre-wrap;word-break:break-word;padding:1px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.log .ts{color:var(--log-dim)}
+.log .lv-info{color:#7fb2ff}
+.log .lv-warn{color:#fbbf24}
+.log .lv-error{color:#f87171}
+.log .pk-int{color:#7dd3fc}
+.log .pk-cobj{color:#86efac}
+.log .pk-iret{color:#fca5a5}
+.log .nm{color:#e6ebf3}
+
+/* ---- 右: (3) Canvas動作画面 + ロボ台帳 ---- */
+.right{display:flex;flex-direction:column;min-height:0;min-width:0}
+.canvas-wrap{position:relative;flex:1;min-height:0;background:var(--field)}
+canvas{display:block;width:100%;height:100%}
+/* 凡例: 右ペイン(ロボ状態カードの下)のカードとして表示 */
+.legend{
+  font-size:10px;line-height:1.5;min-height:0;
+}
+.legend .lgrow{display:flex;flex-wrap:wrap;gap:3px 8px}
+.legend .li{display:inline-flex;align-items:center;gap:4px}
+.legend .sw{width:9px;height:9px;border-radius:2px;display:inline-block}
+.legend .lt{font-weight:700;color:var(--fg-dim);margin:3px 0 1px;text-transform:uppercase;letter-spacing:.3px}
+.overlay-stats{
+  position:absolute;right:8px;top:8px;background:var(--panel);border:1px solid var(--border);
+  border-radius:8px;padding:6px 9px;box-shadow:var(--shadow);font-size:11px;
+  display:flex;gap:12px;
+}
+.overlay-stats b{color:var(--accent)}
+
+/* ---- 初回ルール説明(ゲームセット バナーと同意匠の DOM 版) ---- */
+.rules-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:20}
+.rules-overlay[hidden]{display:none}
+.rules-box{
+  background:rgba(17,24,39,.92);border:3px solid var(--accent);border-radius:12px;
+  box-shadow:var(--shadow);color:#fff;max-width:580px;width:calc(100% - 40px);
+  padding:18px 22px;font-size:13px;line-height:1.75;
+}
+.rules-box h3{font-size:18px;font-weight:bold;margin:0 0 10px;text-align:center}
+.rules-box ol{margin:0 0 14px 1.3em;padding:0}
+.rules-box li{margin:2px 0}
+.rules-box .rb-btn{
+  display:block;margin:0 auto;background:var(--accent);color:#fff;border:0;border-radius:8px;
+  padding:8px 28px;font-size:14px;font-weight:700;cursor:pointer;
+}
+.rules-box .rb-btn:hover{filter:brightness(1.12)}
+.rules-open{
+  background:none;border:1px solid var(--border);border-radius:6px;color:var(--fg-dim);
+  font-size:11px;padding:2px 8px;cursor:pointer;
+}
+.rules-open:hover{color:var(--accent);border-color:var(--accent)}
+
+.roster{flex:0 0 auto;max-height:190px;overflow:auto;border-top:1px solid var(--border);background:var(--panel)}
+table.rt{width:100%;border-collapse:collapse;font-size:11px}
+table.rt th,table.rt td{padding:3px 8px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+table.rt th{position:sticky;top:0;background:var(--panel2);color:var(--fg-dim);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.3px;z-index:1}
+table.rt td.mono{font-family:ui-monospace,Menlo,monospace}
+.stbadge{display:inline-flex;align-items:center;gap:5px}
+.stbadge .sw{width:8px;height:8px;border-radius:50%;display:inline-block}
+.rt tr.dead td{opacity:.5}
+</style>
+</head>
+<body>
+<header>
+  <h1>B-283 CCNx 群ロボ通信デモ</h1>
+  <span class="sub">RFC 8569/8609 · C↔Go 相互運用 · 受像機UI</span>
+  <span class="spacer"></span>
+  <div class="conn"><span id="connDot" class="dot"></span><span id="connTxt">未接続</span></div>
+  <button id="themeBtn" class="btn small" title="ライト/ダーク切替">◐ テーマ</button>
+</header>
+
+<main>
+  <!-- 左カラム -->
+  <div class="left">
+    <!-- (1) 指示コンソール -->
+    <div class="pane">
+      <div class="pane-title">(1) 指示コンソール <span class="tag">task-command / fault-inject / scenario</span></div>
+      <div class="console">
+        <div class="grp">
+          <h4>救助タスク投入(故障ロボ回収)</h4>
+          <div class="row">
+            <label>救助対象</label>
+            <select id="casualtySel"><option value="">-- ロボ選択 --</option></select>
+            <label style="min-width:auto">機数</label>
+            <input type="number" id="carSel" min="1" max="8" value="2">
+          </div>
+          <div class="hint">選んだロボを停止(NEEDS_RESCUE)させ、その位置へ2機で救助 → 病院搬送で復活。<br>→ <span class="preview" id="taskPrev">/task/rescue/robot/?/carriers/2</span></div>
+          <div class="row" style="margin-top:7px">
+            <button class="btn primary" id="sendTask">救助 Interest 送出</button>
+          </div>
+        </div>
+
+        <div class="grp">
+          <h4>おうちに戻れ</h4>
+          <div class="row">
+            <button class="btn small" id="recallBtn">🏠 一旦おうちに戻れ</button>
+          </div>
+          <div class="hint">全機を ControlCenter へ帰還(/command/home)。着いたら星拾いに戻る。救助中の機は継続。</div>
+        </div>
+        <div class="grp">
+          <h4>エリア集中指令</h4>
+          <div class="row">
+            <select id="focusSel"></select>
+            <button class="btn small" id="focusBtn">⭐ このエリアの星だけ(10秒)</button>
+          </div>
+          <div class="hint">10秒間、全機が指定エリア内の星だけを対象にする(/command/focus/{zone})。救助は優先継続。</div>
+        </div>
+        <div class="grp">
+          <h4>シナリオ制御</h4>
+          <div class="row">
+            <button class="btn small" data-act="start">起動 start</button>
+            <button class="btn small" data-act="reset">リセット reset</button>
+            <button class="btn small" data-act="respawn">再配置 respawn</button>
+          </div>
+          <div class="hint">reset=全体再配置 / respawn=停止機の再起動</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- (2) 応答表示ウィンドウ -->
+    <div class="pane logwrap">
+      <div class="pane-title">(2) 応答表示ウィンドウ <span class="tag">log-event / packet-event</span></div>
+      <div class="logbar">
+        <label><input type="checkbox" id="showPkt" checked> パケット技術ログ</label>
+        <label><input type="checkbox" id="jaMode"> 日本語実況のみ</label>
+        <span class="spacer" style="flex:1"></span>
+        <button class="btn small" id="clearLog">clear</button>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <!-- 右: (3) Canvas -->
+  <div class="right">
+    <div class="pane-title" style="background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <span>(3) ロボ動作表示画面 <span class="tag">Canvas2D · 座標はC決定値を描画 · rAF補間</span></span>
+      <button class="rules-open" id="rulesBtn">❓ ルール</button>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="cv"></canvas>
+      <div class="rules-overlay" id="rulesOv" hidden>
+        <div class="rules-box">
+          <h3>🏁 このデモのルール</h3>
+          <ol>
+            <li>🤖 9体のロボットが <b>赤・青・緑の3チーム</b>(各3体)に分かれて自律行動する</li>
+            <li>⭐ フィールドの星を拾い、<b>自チームの回収箱</b>に入れると1個獲得</li>
+            <li>🏆 星が尽きたらゲームセット。<b>箱の星が最多のチームが優勝</b></li>
+            <li>💥 ロボはときどき<b>故障</b>して停止し「助けて🆘」を発信する(左の操作パネルから故障させることもできる)</li>
+            <li>🚑 近くの仲間<b>2機が自己選抜</b>で駆けつけ、担いで<b>病院へ搬送</b>すると復活する</li>
+            <li>📡 指令・救助・報告は<b>すべて CCNx(RFC8569/8609)の「名前」</b>で交換される — 宛先IPは一切指定しない</li>
+            <li>🔍 左のログには<b>実ワイヤ</b>(Interest / Content Object)がそのまま流れる(Wireshark でも観測可)</li>
+            <li>🎮 左ペインから<b>セマンティック名の命令</b>を投入して、自分で介入できる</li>
+            <li>📦 <b>回収箱はドラッグ&amp;ドロップで移動できる</b> — 星の密集地に寄せて、特定のチームが有利になるよう導くこともできる(移動も実 CCNx <span style="font-family:ui-monospace,Menlo,monospace">/bin/{team}/moved</span> で全機へ伝わる)</li>
+          </ol>
+          <button class="rb-btn" id="rulesOk">了解して観戦する</button>
+        </div>
+      </div>
+      <div class="overlay-stats" id="ostats">
+        <span>ロボ <b id="stR">0</b></span>
+        <span>PIT <b id="stP">0</b></span>
+        <span>FIB <b id="stF">0</b></span>
+        <span>CS <b id="stC">0</b></span>
+        <span>星残 <b id="stS">0</b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右カラム: ロボ状態リスト + 凡例 -->
+  <div class="rlist" id="rlist-wrap">
+    <div class="rl-title">🏆 チーム得点</div>
+    <div class="rcard standings" id="standings"></div>
+    <div class="rl-title" style="margin-top:8px">🤖 ロボ状態一覧</div>
+    <div id="rlist"></div>
+    <div class="rl-title" style="margin-top:8px">📖 凡例</div>
+    <div class="legend rcard" id="legend"></div>
+  </div>
+</main>
+
+<script>
+"use strict";
+/* =====================================================================
+ * B-283 ブラウザ受像機 (PROTOCOL.md §3 準拠)。
+ * server→browser: state / topology / packet-event / log-event
+ * browser→server: task-command{zone,carriers} / fault-inject{robot_id} / scenario{action}
+ * 座標系: 40m(x)×30m(y), 原点(0,0)=左上, x右 y下が正 (PROTOCOL 冒頭)。
+ * ブラウザは位置を発明しない。stateのposを描画しrAFで2状態間補間のみ。
+ * ===================================================================== */
+
+/* ---- 状態→色 (PROTOCOL §2 の全stateを網羅) ---- */
+const STATE_COLORS = {
+  IDLE:"#8a94a6", PATROL:"#38bdf8",
+  STAR_CLAIMING:"#a3e635", STAR_ENROUTE:"#84cc16", STAR_LOADING:"#65a30d",
+  STAR_CARRYING:"#16a34a", STAR_UNLOADING:"#15803d",
+  BIDDING:"#fbbf24", SELECTED:"#fb923c", PAIRING:"#f97316",
+  ENROUTE_PICKUP:"#c084fc", SYNC_WAIT:"#a855f7",
+  COOP_LOADING:"#fb7185", COOP_CARRYING:"#ef4444", COOP_UNLOADING:"#dc2626",
+  RECRUITING:"#ec4899", WITHDRAWN:"#6b7280", FAILED:"#991b1b", NEEDS_RESCUE:"#f43f5e",
+  REPAIRING:"#14b8a6", GOING_HOME:"#0ea5e9", BIN_CARRYING:"#f59e0b"
+};
+const STATE_GROUPS = [
+  ["待機/巡回", ["IDLE","PATROL"]],
+  ["星拾い", ["STAR_CLAIMING","STAR_ENROUTE","STAR_LOADING","STAR_CARRYING","STAR_UNLOADING"]],
+  ["選抜", ["BIDDING","SELECTED","PAIRING","WITHDRAWN"]],
+  ["協力搬送", ["ENROUTE_PICKUP","SYNC_WAIT","COOP_LOADING","COOP_CARRYING","COOP_UNLOADING"]],
+  ["救助対象/補充", ["NEEDS_RESCUE","RECRUITING","FAILED"]]
+];
+const PKT_COLORS = { Interest:"#3b82f6", ContentObject:"#22c55e", InterestReturn:"#ef4444" };
+/* ---- チーム対抗戦: チーム = id/3 の連番グループ(#0-2=赤 / #3-5=青 / #6-8=緑。
+        C 側 team_of_id と同式)。bin 0/1/2 が各チームの箱 ---- */
+// 緑は #22c55e ではなく #16a34a。ダークテーマ面(#141b27)で明度帯を外れるためで、
+// 3色ともライト/ダーク両面で CVD 分離・コントラストの検査を通る組み合わせに揃えてある。
+// canvas と得点バーで同じ値を使う(色は実体=チームに従い、描画先ごとに変えない)。
+const TEAM_COLORS = ["#ef4444", "#3b82f6", "#16a34a"];   // 赤 / 青 / 緑
+const TEAM_NAMES  = ["赤", "青", "緑"];
+const teamOf = id => Math.floor(id / 3) % 3;
+const SURPRISE_MS = 1600;   // 転倒直後の「びっくり!!」アニメ時間(この後に吹き出し「助けて」)
+
+/* ---- 状態→吹き出し文(今なにをしているか、平易な日本語) ---- */
+const STATE_SAY = {
+  IDLE:"待機中…", PATROL:"星をさがし中",
+  STAR_CLAIMING:"星み〜っけ！確保", STAR_ENROUTE:"星へ向かってます",
+  STAR_LOADING:"星を拾ってます", STAR_CARRYING:"星を運搬中🌟",
+  STAR_UNLOADING:"回収箱にポイ",
+  BIDDING:"救助いける？距離測定中", SELECTED:"救助担当きまり！",
+  PAIRING:"相方とペア成立", ENROUTE_PICKUP:"現場へ急行中🚑",
+  SYNC_WAIT:"相方まってます", COOP_LOADING:"担架で持ち上げ",
+  COOP_CARRYING:"2機で病院へ搬送中", COOP_UNLOADING:"病院で降ろし中",
+  RECRUITING:"欠員！補充たのむ", WITHDRAWN:"今回はゆずります",
+  FAILED:"故障…ダウン", NEEDS_RESCUE:"助けて🆘",
+  REPAIRING:"修理中…🔧", GOING_HOME:"おうちに帰ります🏠",
+  BIN_CARRYING:"ゴミ箱をお引っ越し中📦"
+};
+function robotSay(r){
+  // 転倒直後は「びっくり!!」アニメ中なので吹き出しは出さない(演出→コメントの順)
+  if (r.state==="NEEDS_RESCUE" && r.stateSince && performance.now()-r.stateSince < SURPRISE_MS) return "";
+  let s = STATE_SAY[r.state] || r.state || "";
+  // 目的地ゾーンが分かる状態は付記
+  if ((r.state==="ENROUTE_PICKUP"||r.state==="BIDDING"||r.state==="SELECTED") && r.zone) s += `(${r.zone})`;
+  return s;
+}
+
+/* ---- グローバル状態 ---- */
+const robots = new Map();          // id -> {id,zone,state,partner,casualty,pit,fib,cs,carrying, tx,ty, rx,ry, seen, dead}
+const collectedStars = new Set();  // 拾われた星 id(地面から消す)
+let gameOver = false, gameWinner = -1;   // 星残数0でゲームセット(winner: チーム番号, -1=引き分け)
+let focusView = null;                    // エリア集中指令の表示ハイライト {zone, until}
+const binCounts = [];              // bin index -> 貯まった星数
+const binView   = [];              // bin index -> 描画位置 {x,y}(補間でジャンプを防ぐ)
+const binPops = [];                // 星置き場の「ピコーン」演出 {x,y,start}
+const revivePops = [];             // 救助後の「復活！」演出 {x,y,start}
+// 3Dロボ画像(スプライト)
+const robotImg = new Image(); let robotImgOK=false;
+robotImg.onload=()=>{ robotImgOK=true; }; robotImg.src="robot.png";
+// 星置き場アイコン
+const binImg = new Image(); let binImgOK=false;
+binImg.onload=()=>{ binImgOK=true; }; binImg.src="bin.png";
+// 星アイコン
+const starImg = new Image(); let starImgOK=false;
+starImg.onload=()=>{ starImgOK=true; }; starImg.src="star.png";
+// 病院アイコン
+const hospImg = new Image(); let hospImgOK=false;
+hospImg.onload=()=>{ hospImgOK=true; }; hospImg.src="hospital.png";
+// 制御局(ControlCenter)アイコン
+const centerImg = new Image(); let centerImgOK=false;
+centerImg.onload=()=>{ centerImgOK=true; }; centerImg.src="center.png";
+let topo = null;                   // topology メッセージ
+let ports = { robot_base:9200, tap:9300, http:8080 };
+let nRobots = 8;
+const packets = [];                // アクティブなパケット線アニメ {fx,fy,tx,ty,kind,name,start}
+const pulses  = [];                // announce パルス {x,y,kind,start}(特定宛先なしの放射)
+const PKT_DUR = 950;               // ms
+const PULSE_DUR = 650;             // ms(announce パルスの寿命)
+const ANNOUNCE_DRAW_RATE = 0.34;   // announce の描画間引き率(送信自体は不変, 改修2)
+
+/* ---- DOM ---- */
+const $ = id => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+const logEl = $("log");
+let logCount = 0;
+const LOG_MAX = 600;
+
+/* =====================================================================
+ * WebSocket
+ * ===================================================================== */
+let ws = null, wsRetry = 0;
+function connect(){
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const url = proto + "://" + (location.host || "127.0.0.1:8080") + "/ws";
+  try { ws = new WebSocket(url); } catch(e){ scheduleReconnect(); return; }
+  ws.onopen = () => { wsRetry = 0; setConn(true); pushLog("info", "接続確立 " + url, "sys"); };
+  ws.onclose = () => { setConn(false); scheduleReconnect(); };
+  ws.onerror = () => { try{ ws.close(); }catch(_){} };
+  ws.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch(e){ return; }
+    try { dispatch(m); } catch(e){ if(!ws._warned){ console.error("dispatch 例外:", e); ws._warned=1; } }
+  };
+}
+function scheduleReconnect(){
+  wsRetry = Math.min(wsRetry + 1, 6);
+  setTimeout(connect, 400 * wsRetry);
+}
+function setConn(on){
+  $("connDot").classList.toggle("on", on);
+  $("connTxt").textContent = on ? "接続中" : "未接続 (再接続…)";
+}
+function send(obj){
+  if (ws && ws.readyState === WebSocket.OPEN){ ws.send(JSON.stringify(obj)); return true; }
+  pushLog("warn", "未接続のため送信できません", "sys");
+  return false;
+}
+
+/* =====================================================================
+ * 受信メッセージ分岐 (type で判別 / PROTOCOL §3.1)
+ * ===================================================================== */
+function dispatch(m){
+  switch(m.type){
+    case "state":        onState(m); break;
+    case "topology":     onTopology(m); break;
+    case "packet-event": onPacket(m); break;
+    case "star-state":
+      // サーバ正本の回収済み星(リロードしても星残・地面の星がズレない)
+      (m.collected||[]).forEach(id => collectedStars.add(id));
+      break;
+    case "bin-state":
+      // 可動ゴミ箱のお引っ越し(正本はワイヤの /bin/{team}/moved payload)
+      if (topo && topo.bins && topo.bins[m.team]){
+        topo.bins[m.team].x = m.x; topo.bins[m.team].y = m.y;
+      }
+      break;
+    case "log-event":    onLogEvent(m); break;
+    default: /* 未知typeは無視(前方互換) */ break;
+  }
+}
+
+function onTopology(m){
+  topo = m;
+  if (m.ports) ports = Object.assign(ports, m.ports);
+  if (typeof m.n_robots === "number") nRobots = m.n_robots;
+  updateTaskPreview();
+  rebuildRobotSelects();
+  // エリア集中指令のエリア一覧を topology から構築
+  {
+    const sel = $("focusSel");
+    if (sel){
+      const cur = sel.value;
+      sel.innerHTML = "";
+      (m.zones||[]).forEach(z => {
+        const o = document.createElement("option");
+        o.value = z.id; o.textContent = z.id;
+        sel.appendChild(o);
+      });
+      if (cur) sel.value = cur;
+    }
+  }
+  // 星・カウントを初期化(reset/respawn で新レイアウトに)
+  collectedStars.clear();
+  gameOver = false; gameWinner = -1;
+  binCounts.length = 0;
+  binView.length = 0;
+  (m.bins||[]).forEach((b,i)=>{ binCounts[i]=0; binView[i]={x:b.x, y:b.y}; });
+  pushLog("info", `topology 受信: field ${m.field?m.field.w+"x"+m.field.h:"?"}m, robots=${nRobots}, zones=${(m.zones||[]).length}, star=${(m.star||[]).length}`, "sys");
+}
+
+function onState(m){
+  let r = robots.get(m.id);
+  if (!r){
+    r = { id:m.id, rx:null, ry:null, seen:0, dead:false };
+    robots.set(m.id, r);
+  }
+  r.zone = m.zone || "";
+  const prevState = r.state;
+  r.state = m.state || "IDLE";
+  if (r.state !== prevState) r.stateSince = performance.now();   // びっくり演出等のタイマ起点
+  r.partner = (typeof m.partner_id === "number") ? m.partner_id : -1;
+  r.casualty = (typeof m.casualty_id === "number") ? m.casualty_id : -1; // 搬送中の救助対象(改修1)
+  r.pit = m.pit_count|0; r.fib = m.fib_count|0; r.cs = m.cs_count|0;
+  r.carrying = !!m.carrying;
+  r.dead = (r.state === "FAILED");
+  if (m.pos){
+    r.tx = m.pos.x; r.ty = m.pos.y;
+    if (r.rx === null){ r.rx = m.pos.x; r.ry = m.pos.y; } // 初回は即着地(発明しない)
+  }
+  // 星を拾った瞬間 → そのロボ位置の最寄り未回収星「1個だけ」を地面から消す
+  // (packet 非依存の近接判定。取り違え/複数消え/未pickup消えを防ぐ, 改修3)
+  if (m.event === "star_pickup" && topo && Array.isArray(topo.star)){
+    const rx = r.tx, ry = r.ty;
+    let best=-1, bd=Infinity;
+    topo.star.forEach(t=>{
+      if (collectedStars.has(t.id)) return;
+      const d=(t.x-rx)**2+(t.y-ry)**2;
+      if (d<bd){ bd=d; best=t.id; }
+    });
+    if (best>=0 && bd<=1.0) collectedStars.add(best); // 半径1m以内の1個のみ
+  }
+  // 星置き場に投入 → 最寄り bin のカウント+1(消えた星数と一致)
+  if (m.event === "star_dropoff"){
+    if (topo && topo.bins && topo.bins.length && r.rx !== null){
+      let bi=0, bd=Infinity;
+      topo.bins.forEach((b,i)=>{ const d=(b.x-r.rx)**2+(b.y-r.ry)**2; if(d<bd){bd=d;bi=i;} });
+      binCounts[bi] = (binCounts[bi]||0)+1;
+      // ピコーン！演出を星置き場に発火
+      binPops.push({ x: topo.bins[bi].x, y: topo.bins[bi].y, start: performance.now() });
+      if (binPops.length > 30) binPops.splice(0, binPops.length-30);
+    }
+  }
+  // 救助完了 → 復活！ 演出(病院で発火)
+  if (m.event === "repaired" && m.pos){
+    revivePops.push({ x: m.pos.x, y: m.pos.y, start: performance.now() });
+    if (revivePops.length > 12) revivePops.splice(0, revivePops.length-12);
+  }
+  r.seen = Date.now();
+  rebuildRobotSelects();
+}
+
+function onPacket(m){
+  // /star/{id}/collected はワイヤ上の正確な星 id なので、星残数の正として反映する
+  // (state 側の近接ヒューリスティックの取りこぼしをここで補正)
+  const mc = /^\/star\/(\d+)\/collected$/.exec(m.name||"");
+  if (mc) collectedStars.add(parseInt(mc[1],10));
+  // 改修2: cls で描画を切替。announce=特定宛先なし → 送信元パルス(制御局へ線を引かない)。
+  //        p2p/toctl/既定 = from→to の線。announce は煩雑さ回避に間引く(送信自体は不変)。
+  const cls = m.cls || "";
+  if (cls === "announce"){
+    if (Math.random() < ANNOUNCE_DRAW_RATE){
+      const a = resolvePort(m.from);
+      if (a){
+        pulses.push({ x:a.x, y:a.y, kind:m.kind, start:performance.now() });
+        if (pulses.length > 160) pulses.splice(0, pulses.length - 160);
+      }
+    }
+  } else {
+    const a = resolvePort(m.from), b = resolvePort(m.to);
+    if (a && b){
+      packets.push({ fx:a.x, fy:a.y, tx:b.x, ty:b.y, kind:m.kind, name:m.name||"", start:performance.now() });
+      if (packets.length > 240) packets.splice(0, packets.length - 240);
+    }
+  }
+  if ($("showPkt").checked && !$("jaMode").checked){
+    logPacket(m);
+  }
+}
+
+function onLogEvent(m){
+  pushLog(m.level || "info", m.text || "", "sys", m.t);
+}
+
+/* =====================================================================
+ * ポート→座標 解決 (PROTOCOL §5.2)
+ *   9200+i -> robot i の描画座標 / 9300(tap)・その他(controller ephemeral) -> 制御局ノード
+ * ===================================================================== */
+function ctlStation(){ // 制御局/observer を左上の外縁に置く(発明ではなく可視化用の固定局)
+  return { x: 1.5, y: 1.5 };
+}
+function resolvePort(port){
+  if (typeof port !== "number") return null;
+  if (port === ports.tap) return ctlStation();
+  const idx = port - ports.robot_base;
+  if (idx >= 0 && idx < 4096){
+    const r = robots.get(idx);
+    if (r && r.rx !== null) return { x:r.rx, y:r.ry };
+    return null; // まだ座標未知 → 線は引かない
+  }
+  return ctlStation(); // controller のエフェメラルポート等
+}
+
+/* =====================================================================
+ * 応答ログ (2)
+ * ===================================================================== */
+function fmtTime(t){
+  const d = t ? new Date(t) : new Date();
+  const p = n => String(n).padStart(2,"0");
+  return p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
+}
+function appendLine(html){
+  const div = document.createElement("div");
+  div.className = "ln";
+  div.innerHTML = html;
+  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+  logEl.appendChild(div);
+  if (++logCount > LOG_MAX){ logEl.removeChild(logEl.firstChild); logCount--; }
+  if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+}
+function esc(s){ return String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function pushLog(level, text, src, t){
+  const lv = (level==="error"||level==="warn"||level==="info") ? level : "info";
+  appendLine(`<span class="ts">${fmtTime(t)}</span> <span class="lv-${lv}">${esc(text)}</span>`);
+}
+function logPacket(m){
+  const k = m.kind, cls = k==="Interest"?"pk-int":k==="ContentObject"?"pk-cobj":"pk-iret";
+  const tag = k==="Interest"?"INT":k==="ContentObject"?"COBJ":"IRET";
+  const dir = `${m.from}→${m.to}`;
+  appendLine(`<span class="ts">${fmtTime(m.t)}</span> <span class="${cls}">RX ${tag}</span> <span class="nm">${esc(m.name||"")}</span> <span class="ts">${m.bytes||0}B ${dir}</span>`);
+}
+
+/* =====================================================================
+ * 送信 UI
+ * ===================================================================== */
+function currentTask(){
+  const id = parseInt($("casualtySel").value, 10);
+  const carriers = Math.max(1, parseInt($("carSel").value,10) || 1);
+  return { robot: isNaN(id) ? -1 : id, carriers };
+}
+function updateTaskPreview(){
+  const t = currentTask();
+  $("taskPrev").textContent = `/task/rescue/robot/${t.robot>=0?t.robot:"?"}/carriers/${t.carriers}`;
+}
+// casualtySel(救助対象=生存かつ未救助)を再構築。
+function rebuildRobotSelects(){
+  rebuildSelect($("casualtySel"), r => r.state !== "NEEDS_RESCUE" && r.state !== "FAILED");
+}
+function rebuildSelect(sel, filter){
+  if (!sel) return;
+  const cur = sel.value;
+  let ids = [...robots.keys()].sort((a,b)=>a-b);
+  if (filter) ids = ids.filter(id => filter(robots.get(id)));
+  const sig = ids.join(",");
+  if (sel.dataset.sig === sig) return;   // メンバー不変なら再構築しない(選択維持)
+  sel.innerHTML = '<option value="">-- ロボ選択 --</option>';
+  ids.forEach(id => {
+    const r = robots.get(id);
+    const o = document.createElement("option");
+    o.value = id; o.textContent = `robot ${id}${r&&r.dead?" (停止)":""}`;
+    sel.appendChild(o);
+  });
+  sel.dataset.sig = sig;
+  if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+}
+
+$("casualtySel").addEventListener("change", updateTaskPreview);
+$("carSel").addEventListener("input", updateTaskPreview);
+
+$("sendTask").addEventListener("click", () => {
+  const t = currentTask();
+  if (t.robot < 0){ pushLog("warn", "救助タスク: 対象ロボ未選択", "sys"); return; }
+  const r = robots.get(t.robot);
+  if (!r || r.tx === undefined){ pushLog("warn", "救助タスク: 対象ロボの座標未取得", "sys"); return; }
+  // casualty の現在描画座標(C 決定値)を Payload 用に送る(改修1)。
+  if (send({ type:"task-command", robot:t.robot, x:r.tx, y:r.ty, carriers:t.carriers })){
+    pushLog("info", `▶ 救助タスク投入 robot=${t.robot} @(${r.tx.toFixed(1)},${r.ty.toFixed(1)}) carriers=${t.carriers}`, "sys");
+  }
+});
+$("recallBtn").addEventListener("click", () => {
+  if (send({ type:"recall" })){
+    pushLog("info", "🏠 「一旦おうちに戻れ」を全機へ送信", "sys");
+  }
+});
+$("focusBtn").addEventListener("click", () => {
+  const zone = $("focusSel").value;
+  if (!zone) return;
+  if (send({ type:"focus-command", zone })){
+    focusView = { zone, until: performance.now() + 10000 };   // ハイライト用(表示のみ)
+    pushLog("info", `⭐ エリア集中指令: ${zone} の星だけ(10秒間)`, "sys");
+  }
+});
+document.querySelectorAll("[data-act]").forEach(b => {
+  b.addEventListener("click", () => {
+    const action = b.getAttribute("data-act");
+    if (send({ type:"scenario", action })){
+      pushLog("info", `◆ シナリオ: ${action}`, "sys");
+      if (action === "reset" || action === "respawn"){ /* サーバから新topology/stateが来る */ }
+    }
+  });
+});
+$("clearLog").addEventListener("click", () => { logEl.innerHTML=""; logCount=0; });
+
+/* =====================================================================
+ * テーマ
+ * ===================================================================== */
+$("themeBtn").addEventListener("click", () => {
+  const root = document.documentElement;
+  const cur = root.getAttribute("data-theme");
+  let next;
+  if (cur === "dark") next = "light";
+  else if (cur === "light") next = "dark";
+  else next = matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark";
+  root.setAttribute("data-theme", next);
+});
+
+/* =====================================================================
+ * Canvas 描画
+ * ===================================================================== */
+let W = 40, H = 30;      // フィールド(m)。topology で上書き
+let dpr = 1, cssW = 0, cssH = 0;
+let ox = 0, oy = 0, scale = 10; // メートル→px 変換
+
+function resize(){
+  const wrap = cv.parentElement;
+  dpr = window.devicePixelRatio || 1;
+  cssW = wrap.clientWidth; cssH = wrap.clientHeight;
+  cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  cv.style.width = cssW + "px"; cv.style.height = cssH + "px";
+  computeTransform();
+}
+function computeTransform(){
+  if (topo && topo.field){ W = topo.field.w; H = topo.field.h; }
+  const pad = 22;
+  const availW = cssW - pad*2, availH = cssH - pad*2;
+  scale = Math.min(availW / W, availH / H);
+  ox = (cssW - W*scale)/2;
+  oy = (cssH - H*scale)/2;
+}
+// メートル→canvas px (dpr込み)
+function px(mx){ return (ox + mx*scale) * dpr; }
+function py(my){ return (oy + my*scale) * dpr; }
+function pd(m){ return m*scale*dpr; }
+
+// canvas 上のマウス位置 → フィールド座標(m)。px/py の逆変換。
+function toField(ev){
+  const rc = cv.getBoundingClientRect();
+  return { x: (ev.clientX - rc.left - ox) / scale, y: (ev.clientY - rc.top - oy) / scale };
+}
+
+/* ---- ゴミ箱のドラッグ&ドロップ(人の介入。実 CCNx /bin/{team}/moved で全機へ) ---- */
+let binDrag = null;   // {team, x, y} ドラッグ中の箱
+cv.addEventListener("pointerdown", ev => {
+  if (!topo || !topo.bins) return;
+  const p = toField(ev);
+  let hit = -1, hd = 1.6;   // 箱アイコン(約2m)の当たり半径
+  (topo.bins||[]).forEach((b,bi) => {
+    const v = binView[bi] || b;
+    const d = Math.hypot(v.x - p.x, v.y - p.y);
+    if (d < hd){ hd = d; hit = bi; }
+  });
+  if (hit < 0) return;
+  binDrag = { team: hit, x: p.x, y: p.y };
+  cv.setPointerCapture(ev.pointerId);
+  cv.style.cursor = "grabbing";
+  ev.preventDefault();
+});
+cv.addEventListener("pointermove", ev => {
+  if (!binDrag){
+    // 箱の上ではカーソルを grab に(掴めることを示す)
+    if (topo && topo.bins){
+      const p = toField(ev);
+      const over = (topo.bins||[]).some((b,bi) => {
+        const v = binView[bi] || b;
+        return Math.hypot(v.x - p.x, v.y - p.y) < 1.6;
+      });
+      cv.style.cursor = over ? "grab" : "";
+    }
+    return;
+  }
+  const p = toField(ev);
+  binDrag.x = Math.max(0.5, Math.min(W - 0.5, p.x));
+  binDrag.y = Math.max(0.5, Math.min(H - 0.5, p.y));
+});
+function endBinDrag(ev){
+  if (!binDrag) return;
+  const d = binDrag; binDrag = null;
+  cv.style.cursor = "";
+  try { cv.releasePointerCapture(ev.pointerId); } catch(e){}
+  if (send({ type:"bin-command", team:d.team, x:d.x, y:d.y })){
+    pushLog("info", `📦 ${TEAM_NAMES[d.team]}チームの箱を (${d.x.toFixed(1)}, ${d.y.toFixed(1)}) へ移動`, "sys");
+  }
+}
+cv.addEventListener("pointerup", endBinDrag);
+cv.addEventListener("pointercancel", endBinDrag);
+
+function cssvar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+/* 5芒星を塗る(中心cx,cy・外半径oR) */
+function fillStar(c,cx,cy,oR,fill,stroke,lw){
+  const iR=oR*0.42;
+  c.beginPath();
+  for(let i=0;i<10;i++){
+    const r=(i%2===0)?oR:iR, a=-Math.PI/2+i*Math.PI/5;
+    const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
+    i===0?c.moveTo(x,y):c.lineTo(x,y);
+  }
+  c.closePath(); c.fillStyle=fill; c.fill();
+  if(stroke){ c.strokeStyle=stroke; c.lineWidth=lw; c.stroke(); }
+}
+
+/* 角丸矩形パス(ctx.roundRect 非対応環境向けの自前実装) */
+function roundRect(c,x,y,w,h,r){
+  r = Math.min(r, w/2, h/2);
+  c.beginPath();
+  c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
+}
+
+/* メカニカルカウンタ(007風)。cx中心・bottomYを下端に、count を3桁ゼロ詰めで桁箱表示。約3倍サイズ */
+function drawCounter(ax, ay, count, mode, frameCol){
+  const digits = String(Math.max(0,Math.min(count,999))).padStart(3,"0").split("");
+  const dw=27*dpr, dh=39*dpr, gap=4*dpr, padX=8*dpr, padY=8*dpr;
+  const w = digits.length*dw + (digits.length-1)*gap + padX*2;
+  const h = dh + padY*2;
+  // mode: 'above'=axを中心・ayを下端 / 'left'=axを右端・ayを縦中心 / 'right'=axを左端・ayを縦中心
+  let x0, y0;
+  if (mode === 'left')      { x0 = ax - w;   y0 = ay - h/2; }
+  else if (mode === 'right'){ x0 = ax;       y0 = ay - h/2; }
+  else                      { x0 = ax - w/2; y0 = ay - h;   }
+  x0 = Math.max(4*dpr, Math.min(x0, cv.width - w - 4*dpr));   // 画面外に出さない
+  roundRect(ctx, x0, y0, w, h, 8*dpr);
+  ctx.fillStyle="#0b1220"; ctx.fill();
+  ctx.strokeStyle=frameCol||"#334155"; ctx.lineWidth=3*dpr; ctx.stroke();   // 枠=チーム色
+  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font=`bold ${34*dpr}px ui-monospace,SFMono-Regular,Menlo,monospace`;
+  digits.forEach((d,i)=>{
+    const dx = x0+padX + i*(dw+gap);
+    roundRect(ctx, dx, y0+padY, dw, dh, 5*dpr);
+    ctx.fillStyle="#1e293b"; ctx.fill();
+    ctx.fillStyle="#ffffff"; ctx.fillText(d, dx+dw/2, y0+padY+dh/2+1*dpr);  // 白文字
+  });
+  ctx.textBaseline="alphabetic";
+}
+
+function draw(now){
+ try {
+  const fLine = cssvar("--field-line"), fg = cssvar("--fg"), fgd = cssvar("--fg-dim");
+  const fieldBg = cssvar("--field"), panel = cssvar("--panel"), border = cssvar("--border");
+  const carriedBins = [];   // お引っ越し中の箱(ロボより手前に後描きするため貯める)
+  ctx.clearRect(0,0,cv.width,cv.height);
+
+  // フィールド枠
+  ctx.fillStyle = fieldBg;
+  ctx.fillRect(px(0),py(0),pd(W),pd(H));
+  ctx.strokeStyle = fLine; ctx.lineWidth = 1*dpr;
+  ctx.strokeRect(px(0),py(0),pd(W),pd(H));
+  // グリッド(マス=2m。探知円=マスの1/5=0.4m)
+  const CELL = 2;
+  ctx.strokeStyle = fLine; ctx.globalAlpha = 0.22; ctx.lineWidth = 1*dpr;
+  ctx.beginPath();
+  for (let gx=CELL; gx<W; gx+=CELL){ ctx.moveTo(px(gx),py(0)); ctx.lineTo(px(gx),py(H)); }
+  for (let gy=CELL; gy<H; gy+=CELL){ ctx.moveTo(px(0),py(gy)); ctx.lineTo(px(W),py(gy)); }
+  ctx.stroke(); ctx.globalAlpha = 1;
+
+  if (topo){
+    // ゾーン(矩形) — PROTOCOL topology.zones {id,x,y,r}: (x,y)中心・半辺r の正方形として描く
+    (topo.zones||[]).forEach((z,zi) => {
+      // w/h 付き=フィールドを敷き詰める矩形タイル(16分割)。無ければ従来の半辺 r 正方形。
+      const zw = z.w || 2*(z.r||3), zh = z.h || 2*(z.r||3);
+      const x0 = px(z.x - zw/2), y0 = py(z.y - zh/2), sw = pd(zw), sh = pd(zh);
+      // 市松の濃淡は座標から行列を導出(分割数に依存しない)
+      const col = Math.round((z.x - zw/2)/zw), row = Math.round((z.y - zh/2)/zh);
+      ctx.fillStyle = ((row+col)%2===0) ? "rgba(59,130,246,0.05)" : "rgba(59,130,246,0.11)"; // 市松で区別
+      ctx.fillRect(x0,y0,sw,sh);
+      ctx.strokeStyle = "rgba(59,130,246,0.45)"; ctx.setLineDash([4*dpr,4*dpr]); ctx.lineWidth=1*dpr;
+      ctx.strokeRect(x0,y0,sw,sh); ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(59,130,246,0.85)"; ctx.font = `${9*dpr}px sans-serif`;
+      ctx.textAlign="left"; ctx.textBaseline="top";
+      ctx.fillText(z.id, x0+3*dpr, y0+3*dpr);
+      ctx.textBaseline="alphabetic"; ctx.textAlign="center";
+      // エリア集中指令中のエリアを金色でハイライト
+      if (focusView && focusView.zone === z.id){
+        if (performance.now() < focusView.until){
+          ctx.fillStyle = "rgba(250,204,21,0.14)"; ctx.fillRect(x0,y0,sw,sh);
+          ctx.strokeStyle = "#facc15"; ctx.lineWidth = 2.5*dpr; ctx.strokeRect(x0,y0,sw,sh);
+        } else focusView = null;
+      }
+    });
+    // 星置き場(bins) — アイコン(約2m=マス1個)。貯まった数をバッジ表示
+    (topo.bins||[]).forEach((b,bi) => {
+      // お引っ越し中はチームの BIN_CARRYING ロボに箱がついていく(置いたら bin-state で確定)
+      // お引っ越し中はチームの BIN_CARRYING ロボの胸元が目標位置。描画位置は補間して
+      // ジャンプ(拾った瞬間/置いた瞬間/state と bin-state の到着順ズレ)を吸収する。
+      let tx = b.x, ty = b.y, carrier = null;
+      robots.forEach(rr => {
+        if (rr.state === "BIN_CARRYING" && teamOf(rr.id) === bi && rr.rx !== null &&
+            (!carrier || rr.id < carrier.id)) carrier = rr;   // 競合時は最小 id に固定(C 側の調停と同じ勝者)
+      });
+      if (carrier){ tx = carrier.rx; ty = carrier.ry - 0.9; }   // 胸の前で抱える
+      const dragging = binDrag && binDrag.team === bi;
+      if (dragging){ tx = binDrag.x; ty = binDrag.y; carrier = null; }   // 人の手が最優先
+      const v = binView[bi] || (binView[bi] = { x: tx, y: ty });
+      const k = dragging ? 0.5 : 0.18;   // ドラッグ中は指に強く追従
+      v.x += (tx - v.x) * k; v.y += (ty - v.y) * k;
+      const U=pd(2), cx=px(v.x), sz=U*0.95, x0=cx-sz/2, y0=py(v.y)-sz/2;
+      const tc = TEAM_COLORS[bi % TEAM_COLORS.length];
+      if (carrier || dragging){
+        carriedBins.push({ bi, x0, y0, sz, cx, tc, dragging });   // ロボより手前(最前面)で後描き
+        return;
+      }
+      if (binImgOK) ctx.drawImage(binImg, x0, y0, sz, sz);
+      else { roundRect(ctx,x0,y0,sz,sz,3*dpr); ctx.fillStyle="#7c5cff"; ctx.fill(); }
+      // チーム色の縁取り(箱の枠)
+      roundRect(ctx, x0-3*dpr, y0-3*dpr, sz+6*dpr, sz+6*dpr, 5*dpr);
+      ctx.strokeStyle=tc; ctx.lineWidth=2.5*dpr; ctx.stroke();
+      // ラベル(チーム名をチーム色で)
+      ctx.fillStyle=tc; ctx.font=`bold ${9*dpr}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="top";
+      ctx.fillText(`${TEAM_NAMES[bi % TEAM_NAMES.length]}チーム`, cx, y0+sz+4*dpr); ctx.textBaseline="alphabetic";
+      // カウンタは最前面に描くため、ここでは描かず末尾でまとめて描画
+    });
+    // 星置き場「ピコーン！」演出(下ろした瞬間)
+    {
+      const POP_DUR = 650;
+      for (let i=binPops.length-1; i>=0; i--){
+        const p = binPops[i], t=(now-p.start)/POP_DUR;
+        if (t>=1){ binPops.splice(i,1); continue; }
+        const cx=px(p.x), cy=py(p.y)-pd(0.6), ease=1-Math.pow(1-t,2);
+        // 広がる光の輪
+        ctx.beginPath(); ctx.arc(cx,cy, pd(0.4)+ease*pd(1.6), 0, Math.PI*2);
+        ctx.strokeStyle="#fde047"; ctx.globalAlpha=(1-t)*0.9; ctx.lineWidth=(2.5*(1-t)+0.5)*dpr; ctx.stroke(); ctx.globalAlpha=1;
+        // 6方向に弾ける小星
+        const N=6, rr=ease*pd(1.4);
+        for (let k=0;k<N;k++){
+          const a=-Math.PI/2 + k*2*Math.PI/N, sx=cx+Math.cos(a)*rr, sy=cy+Math.sin(a)*rr, ss=(1-t)*pd(0.45)+pd(0.12);
+          ctx.globalAlpha=1-t;
+          if (starImgOK) ctx.drawImage(starImg, sx-ss, sy-ss, ss*2, ss*2); else fillStar(ctx, sx, sy, ss, "#facc15", null, 0);
+          ctx.globalAlpha=1;
+        }
+        // 中心で弾む星
+        const pulse = t<0.5 ? (0.6+t*1.6) : (1.4-(t-0.5)*0.8), cs2=pd(0.5)*pulse;
+        ctx.globalAlpha=1-t*0.6;
+        if (starImgOK) ctx.drawImage(starImg, cx-cs2, cy-cs2, cs2*2, cs2*2); else fillStar(ctx, cx, cy, cs2, "#facc15", "#a16207", 1*dpr);
+        ctx.globalAlpha=1;
+      }
+    }
+    // 星(アイコン。拾われた星は描かない)
+    {
+      const sz = pd(1.1); // 約1.1m
+      (topo.star||[]).forEach(t => {
+        if (collectedStars.has(t.id)) return;
+        if (starImgOK) ctx.drawImage(starImg, px(t.x)-sz/2, py(t.y)-sz/2, sz, sz);
+        else fillStar(ctx, px(t.x), py(t.y), 3.6*dpr, "#facc15", "#a16207", 1*dpr);
+      });
+    }
+    // 病院(hospitals) — アイコン(約4m=マス2個。中央配置なので大きく目立たせる)
+    (topo.hospitals||[]).forEach(h => {
+      const U=pd(2), cx=px(h.x), sz=U*1.9, x0=cx-sz/2, y0=py(h.y)-sz/2;
+      if (hospImgOK) ctx.drawImage(hospImg, x0, y0, sz, sz);
+      else { roundRect(ctx,x0,y0,sz,sz,3*dpr); ctx.fillStyle="#fff"; ctx.fill(); ctx.strokeStyle="#e11d48"; ctx.lineWidth=2*dpr; ctx.stroke(); }
+      ctx.fillStyle="#e11d48"; ctx.font=`bold ${12*dpr}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="top";
+      ctx.fillText("病院", cx, y0+sz+2*dpr); ctx.textBaseline="alphabetic";
+    });
+  }
+
+  // 制御局/observer ノード = ControlCenter(約2m=マス1個)。center.png アイコンで描く。
+  {
+    const cs = ctlStation(), U=pd(2), cx=px(cs.x), sz=U*0.95, x0=cx-sz/2, y0=py(cs.y)-sz/2;
+    if (centerImgOK){
+      ctx.drawImage(centerImg, x0, y0, sz, sz);
+    } else {
+      // フォールバック: 従来の自前描画(筐体+画面+電波マーク)。
+      const cy=py(cs.y), w=U*0.9, h=U*0.7, fx0=cx-w/2, fy0=cy-h/2;
+      roundRect(ctx, fx0, fy0, w, h, 3*dpr);
+      ctx.fillStyle="#0ea5e9"; ctx.fill(); ctx.strokeStyle="#0369a1"; ctx.lineWidth=1.5*dpr; ctx.stroke();
+      roundRect(ctx, fx0+w*0.16, fy0+h*0.18, w*0.68, h*0.44, 2*dpr);
+      ctx.fillStyle="#082f49"; ctx.fill();
+      ctx.strokeStyle="#7dd3fc"; ctx.lineWidth=1*dpr; ctx.stroke();
+      ctx.strokeStyle="#7dd3fc"; ctx.lineWidth=1.4*dpr;
+      for(let k=1;k<=2;k++){ ctx.beginPath(); ctx.arc(cx, fy0+2*dpr, (w*0.14)*k, -Math.PI*0.75, -Math.PI*0.25); ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(cx, fy0+2*dpr, 1.6*dpr, 0, Math.PI*2); ctx.fillStyle="#7dd3fc"; ctx.fill();
+    }
+    // ラベル
+    ctx.fillStyle=fgd; ctx.font=`bold ${9*dpr}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="top";
+    ctx.fillText("ControlCenter", cx, y0+sz+2*dpr); ctx.textBaseline="alphabetic";
+  }
+
+  // ---- 補間更新 & 協力搬送の担架線 ----
+  const dt = Math.min(50, now - (draw._last||now)); draw._last = now;
+  const k = 1 - Math.exp(-dt/110); // 時間ベース平滑
+  robots.forEach(r => {
+    if (r.tx === undefined) return;
+    if (r.rx === null){ r.rx = r.tx; r.ry = r.ty; }
+    else { r.rx += (r.tx - r.rx)*k; r.ry += (r.ty - r.ry)*k; }
+  });
+  // 担架(搬送)中の casualty を carrier ペア中点に描くための対応表(改修1)。
+  // carrier が state JSON で報告する casualty_id を使う。COOP_ 中のみ「担架に乗る」。
+  const stretcher = new Map();  // casualtyId -> {x,y}
+  robots.forEach(r => {
+    if (r.casualty !== undefined && r.casualty >= 0 &&
+        r.partner !== undefined && r.partner >= 0 && r.id < r.partner &&
+        /^COOP_/.test(r.state||"")){
+      const p = robots.get(r.partner);
+      if (p && p.rx !== null && r.rx !== null)
+        stretcher.set(r.casualty, { x:(r.rx+p.rx)/2, y:(r.ry+p.ry)/2,
+                                    ang: Math.atan2(p.ry-r.ry, p.rx-r.rx) + Math.PI/2 }); // 頭-足軸に沿って寝かせる
+    }
+  });
+  // 担架線(協力搬送: partner同士を実座標で結ぶ。位置は発明しない)
+  robots.forEach(r => {
+    if (r.partner !== undefined && r.partner >= 0 && r.id < r.partner){
+      const p = robots.get(r.partner);
+      if (p && p.rx !== null && r.rx !== null){
+        const carrying = r.state && r.state.indexOf("COOP") === 0;
+        // 搬送中の担架線は担ぎ手の胸〜お腹の高さ(casualty の持ち上げ描画と同じ)に引く
+        const lift = carrying ? pd(2.6)*0.45 : 0;
+        ctx.strokeStyle = carrying ? "#ef4444" : "rgba(148,163,184,.6)";
+        ctx.lineWidth = (carrying?3:1.5)*dpr; ctx.setLineDash(carrying?[]:[3*dpr,3*dpr]);
+        ctx.beginPath(); ctx.moveTo(px(r.rx),py(r.ry)-lift); ctx.lineTo(px(p.rx),py(p.ry)-lift); ctx.stroke();
+        ctx.setLineDash([]);
+        // 患者マーカは casualty ロボ本体を中点に描く(下のロボ描画ループが担当)。
+      }
+    }
+  });
+
+  // ---- パケットアニメ ----
+  for (let i=packets.length-1; i>=0; i--){
+    const pk = packets[i];
+    const pr = (now - pk.start)/PKT_DUR;
+    if (pr >= 1){ packets.splice(i,1); continue; }
+    const col = PKT_COLORS[pk.kind] || "#9ca3af";
+    const cx = pk.fx + (pk.tx-pk.fx)*pr, cy = pk.fy + (pk.ty-pk.fy)*pr;
+    // トレイル線
+    ctx.strokeStyle = col; ctx.globalAlpha = 0.18; ctx.lineWidth = 1.5*dpr;
+    ctx.beginPath(); ctx.moveTo(px(pk.fx),py(pk.fy)); ctx.lineTo(px(pk.tx),py(pk.ty)); ctx.stroke();
+    ctx.globalAlpha = 1;
+    // 走る点
+    ctx.beginPath(); ctx.arc(px(cx),py(cy),4*dpr,0,Math.PI*2);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(px(cx),py(cy),7*dpr,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); ctx.globalAlpha=1;
+  }
+
+  // ---- announce パルス(特定宛先なし: star claim / pose放流 / repaired 等, 改修2)----
+  for (let i=pulses.length-1; i>=0; i--){
+    const pu = pulses[i];
+    const pr = (now - pu.start)/PULSE_DUR;
+    if (pr >= 1){ pulses.splice(i,1); continue; }
+    const col = PKT_COLORS[pu.kind] || "#9ca3af";
+    ctx.beginPath(); ctx.arc(px(pu.x), py(pu.y), pd(0.25)+pd(1.1)*pr, 0, Math.PI*2);
+    ctx.strokeStyle = col; ctx.globalAlpha = 0.55*(1-pr); ctx.lineWidth = 2*dpr; ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // ---- ロボ ----
+  robots.forEach(r => {
+    // 搬送中の casualty は carrier ペアの中点(担架)に描く(改修1)。
+    const carried = stretcher.get(r.id);
+    const rx = carried ? carried.x : r.rx;
+    const ry = carried ? carried.y : r.ry;
+    if (rx === null || rx === undefined) return;
+    const col = STATE_COLORS[r.state] || "#8a94a6";
+    const X = px(rx), Y = py(ry), s = dpr;
+    const rad = 8*dpr; // 吹き出し等の基準
+    const _asp = (robotImgOK && robotImg.width) ? robotImg.width/robotImg.height : 1;
+    const spriteH = pd(2.6), spriteW = spriteH*_asp;
+    // 担架で運ばれる故障機 = 横向きに寝かせて描く(通常描画はスキップ)。
+    // 担ぎ手の胸〜お腹の高さに持ち上げる(担ぎ手スプライトの約45%の高さ)。
+    if (carried){
+      const liftY = Y - spriteH*0.45;
+      // 地面に置いた影(持ち上がっている感を出す)
+      ctx.beginPath(); ctx.ellipse(X, Y+1*s, spriteH*0.42, spriteW*0.14, 0, 0, Math.PI*2);
+      ctx.fillStyle="rgba(0,0,0,0.18)"; ctx.fill();
+      ctx.save(); ctx.translate(X, liftY); ctx.rotate(carried.ang !== undefined ? carried.ang : Math.PI/2);
+      if (robotImgOK) ctx.drawImage(robotImg, -spriteH/2, -spriteW/2, spriteH, spriteW);
+      else { ctx.fillStyle="#991b1b"; ctx.fillRect(-spriteH/2,-spriteW/2,spriteH,spriteW); }
+      ctx.restore();
+      ctx.fillStyle="#fca5a5"; ctx.font=`bold ${8*s}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(String(r.id), X, liftY); ctx.textBaseline="alphabetic";
+      return;   // 乗客なので探知円/リング/手などは描かない
+    }
+    const moving = /ENROUTE|CARRYING|PATROL|RECRUIT|PICKUP/.test(r.state||"");
+    const bob = (moving && !r.dead) ? Math.abs(Math.sin(now/160 + r.id))*3*s : 0;
+    const footY = Y;
+    const headTopY = footY - spriteH - bob;     // 吹き出し用の頭頂
+    const fallen = (r.state==="NEEDS_RESCUE");   // 助けて＝コテンと横倒し
+    if (fallen){
+      // 接地影(横長)
+      ctx.beginPath(); ctx.ellipse(X, footY+1*s, spriteH*0.32, spriteW*0.13, 0,0,Math.PI*2); ctx.fillStyle="rgba(0,0,0,0.22)"; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(X, footY+1*s, spriteH*0.28, spriteW*0.12, 0,0,Math.PI*2); ctx.strokeStyle=col; ctx.lineWidth=2*s; ctx.globalAlpha=0.9; ctx.stroke(); ctx.globalAlpha=1;
+      // コテンと横倒し(≈85°)
+      ctx.save(); ctx.translate(X, footY - spriteW*0.30); ctx.rotate(Math.PI*0.48);
+      if (robotImgOK) ctx.drawImage(robotImg, -spriteH/2, -spriteW/2, spriteH, spriteW);
+      else { ctx.fillStyle="#f43f5e"; ctx.fillRect(-spriteH/2,-spriteW/2,spriteH,spriteW); }
+      ctx.restore();
+      // チーム縁取り(倒れていても所属は見せる)
+      ctx.beginPath(); ctx.arc(X, footY - spriteW*0.30, spriteH*0.60, 0, Math.PI*2);
+      ctx.strokeStyle=TEAM_COLORS[teamOf(r.id)]; ctx.lineWidth=2.2*s; ctx.globalAlpha=0.85; ctx.stroke(); ctx.globalAlpha=1;
+      // びっくり!! (点滅) — 転倒直後だけのアニメ。終わったら吹き出し「助けて」に切替
+      if (r.stateSince && (now - r.stateSince) < SURPRISE_MS){
+        const bl=0.5+0.5*Math.sin(now/100);
+        ctx.globalAlpha=0.55+0.45*bl; ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillStyle="#ef4444"; ctx.font=`bold ${Math.round(17*s)}px sans-serif`;
+        ctx.fillText("!!", X - spriteW*0.55, footY - spriteH*0.60);
+        ctx.fillText("!!", X + spriteW*0.55, footY - spriteH*0.72);
+        ctx.globalAlpha=1; ctx.textBaseline="alphabetic";
+      }
+    } else {
+    // ---- 探知円(1.0m = マス2mの1/2)。色は所属チーム固定(状態で変えない) ----
+    {
+      const tcS = TEAM_COLORS[teamOf(r.id)];
+      ctx.beginPath(); ctx.arc(X,Y,pd(1.0),0,Math.PI*2);
+      ctx.fillStyle=tcS; ctx.globalAlpha=0.10; ctx.fill();
+      ctx.strokeStyle=tcS; ctx.globalAlpha=0.30; ctx.lineWidth=1*s; ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+    // 接地影
+    ctx.beginPath(); ctx.ellipse(X, footY+1*s, spriteW*0.34, spriteW*0.13, 0, 0, Math.PI*2);
+    ctx.fillStyle="rgba(0,0,0,0.22)"; ctx.fill();
+    // 状態リング(足元)
+    ctx.beginPath(); ctx.ellipse(X, footY+1*s, spriteW*0.30, spriteW*0.11, 0, 0, Math.PI*2);
+    ctx.strokeStyle=col; ctx.lineWidth=2*s; ctx.globalAlpha=r.dead?0.5:0.95; ctx.stroke(); ctx.globalAlpha=1;
+    // 運搬中は淡い破線輪
+    if (r.carrying){
+      ctx.beginPath(); ctx.ellipse(X, footY+1*s, spriteW*0.42, spriteW*0.16, 0, 0, Math.PI*2);
+      ctx.strokeStyle=col; ctx.globalAlpha=0.55; ctx.setLineDash([3*s,3*s]); ctx.lineWidth=1.5*s; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+    }
+    // ロボ画像
+    if (robotImgOK){
+      ctx.save(); if (r.dead) ctx.globalAlpha=0.5;
+      ctx.drawImage(robotImg, X-spriteW/2, footY - spriteH - bob, spriteW, spriteH);
+      ctx.restore();
+    } else {
+      ctx.beginPath(); ctx.arc(X, footY-spriteH*0.4, 8*s, 0, Math.PI*2); ctx.fillStyle=col; ctx.fill();
+    }
+    // チーム縁取り(所属色のリングでロボを囲む)
+    {
+      const tc = TEAM_COLORS[teamOf(r.id)];
+      ctx.beginPath(); ctx.arc(X, footY - spriteH*0.5 - bob, spriteH*0.62, 0, Math.PI*2);
+      ctx.strokeStyle=tc; ctx.lineWidth=2.2*s; ctx.globalAlpha=r.dead?0.4:0.9; ctx.stroke(); ctx.globalAlpha=1;
+    }
+    // FAILED: 体に×
+    if (r.dead){
+      const cyF = footY - spriteH*0.5;
+      ctx.strokeStyle="#ef4444"; ctx.lineWidth=2.2*s;
+      ctx.beginPath(); ctx.moveTo(X-7*s,cyF-7*s); ctx.lineTo(X+7*s,cyF+7*s);
+      ctx.moveTo(X+7*s,cyF-7*s); ctx.lineTo(X-7*s,cyF+7*s); ctx.stroke();
+    }
+    // 星運搬中(拾ってから星置き場に下ろすまで)は胸に星を描く
+    if (!r.dead && (r.state==="STAR_CARRYING" || r.state==="STAR_UNLOADING")){
+      const chestY = footY - spriteH*0.52, cr = spriteW*0.22;
+      if (starImgOK) ctx.drawImage(starImg, X-cr, chestY-cr, cr*2, cr*2);
+      else fillStar(ctx, X, chestY, cr, "#facc15", "#a16207", 1*s);
+    }
+    // 手を動かす動作: 掴む/入れる/運搬(持ち続ける)。運搬中も手を動かして見えるように。
+    const grabbing = r.state==="STAR_LOADING" || r.state==="COOP_LOADING";
+    const placing  = r.state==="STAR_UNLOADING" || r.state==="COOP_UNLOADING";
+    const holding  = r.state==="STAR_CARRYING" || r.state==="COOP_CARRYING";
+    if (!r.dead && (grabbing || placing || holding)){
+      const osc = Math.sin(now/60 + r.id)*0.5 + 0.5;      // 0..1 往復(手の上下)
+      const armTop = footY - spriteH*0.46;
+      let reach;
+      if (grabbing)      reach = spriteH*0.14 + osc*spriteH*0.20;   // 掴む=下へ大きく
+      else if (placing)  reach = spriteH*0.06 + osc*spriteH*0.14;   // 入れる=小刻み
+      else               reach = spriteH*0.22 + (osc-0.5)*spriteH*0.06; // 運搬=前に出して小さく揺れ
+      const hy = armTop + reach, hx = spriteW*(0.26 + (grabbing?osc*0.06:0));
+      ctx.strokeStyle="#cbd5e1"; ctx.lineWidth=2*s; ctx.lineCap="round"; ctx.fillStyle="#eef2f7";
+      for (const sgn of [-1,1]){
+        ctx.beginPath(); ctx.moveTo(X+sgn*spriteW*0.16, armTop); ctx.lineTo(X+sgn*hx, hy); ctx.stroke();
+        ctx.beginPath(); ctx.arc(X+sgn*hx, hy, 3*s, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      }
+      ctx.lineCap="butt";
+    }
+    }  // end if(!fallen)
+    // id(足元リング内)
+    ctx.fillStyle=r.dead?"#fca5a5":"#fff"; ctx.font=`bold ${8*s}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(String(r.id), X, footY+1*s);
+    ctx.textBaseline="alphabetic";
+    // ---- 吹き出し(今なにをしているか) ----
+    const say = robotSay(r);
+    if (say){
+      ctx.font = `${9*dpr}px sans-serif`; ctx.textAlign="left"; ctx.textBaseline="middle";
+      const padX=5*dpr, padY=3.5*dpr, tw=ctx.measureText(say).width;
+      const bw=tw+padX*2, bh=14*dpr;
+      let bx=X - bw/2, by=headTopY - 4*dpr - bh;   // スプライト頭頂の上
+      // 画面外にはみ出さないようクランプ
+      bx = Math.max(2*dpr, Math.min(bx, cv.width - bw - 2*dpr));
+      by = Math.max(2*dpr, by);
+      const rr=4*dpr;
+      // 吹き出し本体(角丸) + 下向きしっぽ
+      ctx.beginPath();
+      ctx.moveTo(bx+rr,by); ctx.arcTo(bx+bw,by,bx+bw,by+bh,rr);
+      ctx.arcTo(bx+bw,by+bh,bx,by+bh,rr); ctx.arcTo(bx,by+bh,bx,by,rr);
+      ctx.arcTo(bx,by,bx+bw,by,rr); ctx.closePath();
+      ctx.fillStyle = r.dead ? "rgba(153,27,27,.92)" : "rgba(17,24,39,.88)";
+      ctx.fill(); ctx.strokeStyle=col; ctx.lineWidth=1.2*dpr; ctx.stroke();
+      // しっぽ(ロボ方向へ)
+      const tipX=Math.max(bx+rr+3*dpr, Math.min(X, bx+bw-rr-3*dpr));
+      ctx.beginPath(); ctx.moveTo(tipX-4*dpr,by+bh); ctx.lineTo(tipX+4*dpr,by+bh); ctx.lineTo(tipX,by+bh+5*dpr); ctx.closePath();
+      ctx.fillStyle = r.dead ? "rgba(153,27,27,.92)" : "rgba(17,24,39,.88)"; ctx.fill();
+      // 文字
+      ctx.fillStyle="#fff"; ctx.fillText(say, bx+padX, by+bh/2);
+      ctx.textBaseline="alphabetic";
+      // 番号バッジを吹き出しの上に
+      const idText = "#"+r.id, cbx = bx+bw/2;
+      ctx.font = `bold ${11*dpr}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
+      const itw = ctx.measureText(idText).width, ipad=5*dpr, ih=15*dpr;
+      const iy = Math.max(2*dpr+ih/2, by - 3*dpr - ih/2);
+      roundRect(ctx, cbx-itw/2-ipad, iy-ih/2, itw+ipad*2, ih, 5*dpr);
+      ctx.fillStyle=col; ctx.fill(); ctx.strokeStyle="rgba(255,255,255,.6)"; ctx.lineWidth=1*dpr; ctx.stroke();
+      ctx.fillStyle="#fff"; ctx.fillText(idText, cbx, iy);
+      ctx.textBaseline="alphabetic";
+    }
+  });
+
+  // ---- お引っ越し中のゴミ箱(ロボの手前=最前面に描く) ----
+  carriedBins.forEach(cb => {
+    if (cb.dragging){   // ドラッグ中は落ち影+持ち上げ表現
+      ctx.beginPath(); ctx.ellipse(cb.cx, cb.y0+cb.sz+4*dpr, cb.sz*0.42, cb.sz*0.14, 0,0,Math.PI*2);
+      ctx.fillStyle="rgba(0,0,0,0.22)"; ctx.fill();
+    }
+    if (binImgOK) ctx.drawImage(binImg, cb.x0, cb.y0, cb.sz, cb.sz);
+    else { roundRect(ctx,cb.x0,cb.y0,cb.sz,cb.sz,3*dpr); ctx.fillStyle="#7c5cff"; ctx.fill(); }
+    roundRect(ctx, cb.x0-3*dpr, cb.y0-3*dpr, cb.sz+6*dpr, cb.sz+6*dpr, 5*dpr);
+    ctx.strokeStyle=cb.tc; ctx.lineWidth=(cb.dragging?3.5:2.5)*dpr;
+    if (cb.dragging) ctx.setLineDash([5*dpr,3*dpr]);
+    ctx.stroke(); ctx.setLineDash([]);
+  });
+
+  // ---- 星置き場カウンタ(最前面) ---- ロボ/星/パケットに被らないよう最後に描く
+  if (topo){
+    (topo.bins||[]).forEach((b,bi) => {
+      const v = binView[bi] || b;   // 補間位置に追従(お引っ越し中もカウンタが滑らかに動く)
+      const U=pd(2), cx=px(v.x), cy=py(v.y), half=U*0.95/2, cnt=binCounts[bi]||0;
+      const tcC = TEAM_COLORS[bi % TEAM_COLORS.length];
+      if (v.x < W*0.35)       drawCounter(cx-half-6*dpr, cy, cnt, 'left', tcC);   // 左の箱→左側
+      else if (v.x > W*0.65)  drawCounter(cx+half+6*dpr, cy, cnt, 'right', tcC);  // 右の箱→右側
+      else                    drawCounter(cx, cy-half-10*dpr, cnt, 'above', tcC); // 中央→上
+    });
+  }
+
+  // ---- 復活！演出(最前面) ---- 救助完了で病院に発火
+  {
+    const RV=1600;
+    for (let i=revivePops.length-1;i>=0;i--){
+      const p=revivePops[i], t=(now-p.start)/RV;
+      if (t>=1){ revivePops.splice(i,1); continue; }
+      const cx=px(p.x), cy=py(p.y)-pd(0.6), ease=1-Math.pow(1-t,2);
+      // 広がる光の輪(2重)
+      for (let k=0;k<2;k++){
+        ctx.beginPath(); ctx.arc(cx,cy, pd(0.5)+ease*pd(2.4)+k*pd(0.6), 0, Math.PI*2);
+        ctx.strokeStyle="#34d399"; ctx.globalAlpha=(1-t)*0.8; ctx.lineWidth=(3*(1-t)+0.5)*dpr; ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+      // キラキラ(8方向に飛ぶ小星)
+      const N=8, rr=ease*pd(2.0);
+      for (let k=0;k<N;k++){
+        const a=-Math.PI/2 + k*2*Math.PI/N, sx=cx+Math.cos(a)*rr, sy=cy+Math.sin(a)*rr, ss=(1-t)*pd(0.5)+pd(0.12);
+        ctx.globalAlpha=1-t;
+        if (starImgOK) ctx.drawImage(starImg, sx-ss, sy-ss, ss*2, ss*2); else fillStar(ctx, sx, sy, ss, "#fde047", null, 0);
+        ctx.globalAlpha=1;
+      }
+      // 「復活！」テキスト(上へ浮上＋フェード)
+      const ty = cy - pd(1.2) - ease*pd(1.2);
+      ctx.font=`bold ${Math.round(16*dpr)}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.globalAlpha=1-t;
+      ctx.lineWidth=3*dpr; ctx.strokeStyle="rgba(6,78,59,.9)"; ctx.strokeText("復活！✨", cx, ty);
+      ctx.fillStyle="#34d399"; ctx.fillText("復活！✨", cx, ty);
+      ctx.globalAlpha=1; ctx.textBaseline="alphabetic";
+    }
+  }
+
+  // ---- ゲームセット バナー(白文字 + 優勝チーム色の枠) ----
+  if (gameOver){
+    const bc = gameWinner >= 0 ? TEAM_COLORS[gameWinner] : "#9ca3af";
+    const line1 = "🏁 ゲームセット！";
+    const line2 = gameWinner >= 0
+      ? `優勝: ${TEAM_NAMES[gameWinner]}チーム(${binCounts[gameWinner]||0}個)`
+      : "引き分け！";
+    const cxB = px(W/2), cyB = py(H/2);
+    ctx.font = `bold ${20*dpr}px sans-serif`;
+    const w1 = ctx.measureText(line1).width;
+    ctx.font = `bold ${15*dpr}px sans-serif`;
+    const w2 = ctx.measureText(line2).width;
+    const bw = Math.max(w1, w2) + 44*dpr, bh = 74*dpr;
+    roundRect(ctx, cxB-bw/2, cyB-bh/2, bw, bh, 12*dpr);
+    ctx.fillStyle = "rgba(17,24,39,.88)"; ctx.fill();
+    ctx.strokeStyle = bc; ctx.lineWidth = 3*dpr; ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = `bold ${20*dpr}px sans-serif`;
+    ctx.fillText(line1, cxB, cyB - 14*dpr);
+    ctx.font = `bold ${15*dpr}px sans-serif`;
+    ctx.fillText(line2, cxB, cyB + 16*dpr);
+    ctx.textBaseline = "alphabetic";
+  }
+  updateOverlay();
+ } catch(e){ if(!draw._warned){ console.error("draw() 例外(以降も継続描画):", e); draw._warned=1; } }
+ requestAnimationFrame(draw);
+}
+
+/* ---- オーバレイ集計 + 台帳 ---- */
+let lastRoster = 0;
+function updateOverlay(){
+  let P=0,F=0,C=0;
+  robots.forEach(r => { P+=r.pit||0; F+=r.fib||0; C+=r.cs||0; });
+  $("stR").textContent = robots.size;
+  $("stP").textContent = P; $("stF").textContent = F; $("stC").textContent = C;
+  // 星残数 + ゲームセット判定(地面の星が尽き、運搬中の星も無くなったら確定)
+  const totalStars = (topo && Array.isArray(topo.star)) ? topo.star.length : 0;
+  const remaining = Math.max(0, totalStars - collectedStars.size);
+  $("stS").textContent = remaining;
+  if (!gameOver && totalStars > 0 && remaining === 0){
+    let inTransit = false;
+    robots.forEach(r => { if (/^STAR_(LOADING|CARRYING|UNLOADING)$/.test(r.state||"")) inTransit = true; });
+    if (!inTransit){
+      gameOver = true;
+      const sc = [binCounts[0]||0, binCounts[1]||0, binCounts[2]||0];
+      const mx = Math.max(...sc);
+      const winners = sc.map((v,i)=>v===mx?i:-1).filter(i=>i>=0);
+      gameWinner = (winners.length === 1) ? winners[0] : -1;
+      pushLog("info", gameWinner>=0
+        ? `🏁 ゲームセット！ 優勝: ${TEAM_NAMES[gameWinner]}チーム(${mx}個)`
+        : `🏁 ゲームセット！ 引き分け(${mx}個)`, "sys");
+    }
+  }
+  const now = performance.now();
+  if (now - lastRoster > 250){ lastRoster = now; renderRoster(); }
+}
+/* ---- チーム得点バー ----
+   3 チームの得点(= 各チームの箱に入った星の数)を横棒で比較し、首位を 👑 で示す。
+   識別は「色 + チーム名ラベル + 数値」の三重で、色だけに依存させない。 */
+function renderStandings(){
+  const el = $("standings");
+  if (!el) return;
+  const sc = [binCounts[0]|0, binCounts[1]|0, binCounts[2]|0];
+  const max = Math.max(...sc);
+  const lead = max > 0 ? sc.map((v,i)=>v===max?i:-1).filter(i=>i>=0) : [];
+  let html = "";
+  sc.forEach((v,i) => {
+    const w = max > 0 ? Math.round(v / max * 100) : 0;
+    const crown = lead.includes(i) ? ' <span class="st-lead" title="首位">👑</span>' : "";
+    html +=
+      `<div class="st-row" title="${TEAM_NAMES[i]}チーム ${v}個">`+
+        `<div class="st-name"><span class="st-sw" style="background:${TEAM_COLORS[i]}"></span>`+
+          `${TEAM_NAMES[i]}${crown}</div>`+
+        `<div class="st-track"><div class="st-bar" style="width:${w}%;background:${TEAM_COLORS[i]}"></div></div>`+
+        `<div class="st-val">${v}</div>`+
+      `</div>`;
+  });
+  const total = sc[0]+sc[1]+sc[2];
+  let foot;
+  if (total === 0) foot = "まだ得点なし";
+  else if (lead.length > 1) foot = `${lead.map(i=>TEAM_NAMES[i]).join("・")} が同点首位（${max}個）`;
+  else {
+    const second = Math.max(...sc.filter((_,i)=>i!==lead[0]));
+    foot = `${TEAM_NAMES[lead[0]]}がトップ（2位に +${max-second}）`;
+  }
+  html += `<div class="st-foot">${foot} ／ 合計 ${total}個</div>`;
+  el.innerHTML = html;
+}
+
+function renderRoster(){
+  renderStandings();
+  const el = $("rlist");
+  if (!el) return;
+  const ids = [...robots.keys()].sort((a,b)=>a-b);
+  const frag = document.createDocumentFragment();
+  ids.forEach(id => {
+    const r = robots.get(id);
+    const col = STATE_COLORS[r.state] || "#8a94a6";
+    const tc = TEAM_COLORS[teamOf(id)];
+    const d = document.createElement("div");
+    d.className = "rcard" + (r.dead ? " dead" : "");
+    d.style.borderLeftColor = tc;
+    // 桁を固定して幅の揺れを抑える(座標は5桁固定、カウントは2桁固定)
+    const fx = v => v.toFixed(1).padStart(4, " ");   // figure space で桁埋め
+    const f2 = v => String(v||0).padStart(2, " ");
+    const pos = (r.tx!==undefined) ? `${fx(r.tx)},${fx(r.ty)}` : "   -,   -";
+    const say = STATE_SAY[r.state] || "";
+    d.innerHTML =
+      `<div class="rc-h"><b>🤖 #${id}</b><span class="rc-team" style="color:${tc}">${TEAM_NAMES[teamOf(id)]}チーム</span></div>`+
+      `<div class="rc-st"><span class="sw" style="background:${col}"></span>${esc(r.state||"")}</div>`+
+      `<div class="rc-say">${say ? esc(say) : " "}</div>`+
+      `<div class="rc-meta">zone ${esc(r.zone||"-")} 相方 ${(r.partner>=0)?("#"+r.partner):"--"} (${pos})</div>`+
+      `<div class="rc-meta">PIT ${f2(r.pit)} FIB ${f2(r.fib)} CS ${f2(r.cs)}${r.carrying?" ⭐":""}</div>`;
+    frag.appendChild(d);
+  });
+  el.replaceChildren(frag);
+}
+
+/* ---- 凡例 ---- */
+function buildLegend(){
+  const el = $("legend");
+  let html = `<div class="lt">パケット</div><div class="lgrow">`;
+  for (const k in PKT_COLORS){ html += `<span class="li"><span class="sw" style="background:${PKT_COLORS[k]}"></span>${k}</span>`; }
+  html += `</div>`;
+  STATE_GROUPS.forEach(([label, sts]) => {
+    html += `<div class="lt">${label}</div><div class="lgrow">`;
+    sts.forEach(s => { html += `<span class="li"><span class="sw" style="border-radius:50%;background:${STATE_COLORS[s]}"></span>${s}</span>`; });
+    html += `</div>`;
+  });
+  el.innerHTML = html;
+}
+
+/* ---- 凡例 表示/非表示トグル ---- */
+function initLegendToggle(){
+  const btn = $("legendToggle"), el = $("legend");
+  if (!btn || !el) return;
+  let shown = true;
+  btn.addEventListener("click", () => {
+    shown = !shown;
+    el.style.display = shown ? "" : "none";
+    btn.textContent = shown ? "凡例 ▲" : "凡例 ▼";
+  });
+}
+
+/* =====================================================================
+ * 起動
+ * ===================================================================== */
+window.addEventListener("resize", resize);
+buildLegend();
+initLegendToggle();
+resize();
+// ロスター表の伸縮など canvas-wrap のサイズ変化に追従(はみ出し・重なり防止)。
+if (window.ResizeObserver){
+  const _ro = new ResizeObserver(() => resize());
+  _ro.observe(cv.parentElement);
+}
+updateTaskPreview();
+requestAnimationFrame(draw);
+connect();
+
+/* ---- 初回ルール説明(開くたびに表示。❓ ルール で再表示) ----
+ * ページを開いて最初の「了解して観戦する」で scenario:reset を送り、新しい試合から観戦する。
+ * (❓ で再表示した後のクリックではリセットしない=観戦中の試合を壊さない) */
+(function(){
+  const ov = $("rulesOv");
+  if (!ov) return;
+  ov.hidden = false;                                    // 初回表示
+  let firstOk = true;
+  $("rulesOk").onclick = () => {
+    ov.hidden = true;
+    if (firstOk){
+      firstOk = false;
+      // WS 接続前にクリックされても取りこぼさないよう少しリトライする
+      const req = (tries) => {
+        if (send({ type:"scenario", action:"reset" })){
+          pushLog("info", "◆ 観戦開始: 新しい試合をリクエスト(scenario:reset)", "sys");
+          return;
+        }
+        if (tries > 0) setTimeout(() => req(tries - 1), 500);
+      };
+      req(10);
+    }
+  };
+  ov.addEventListener("click", e => { if (e.target === ov) ov.hidden = true; });
+  const b = $("rulesBtn");
+  if (b) b.onclick = () => { ov.hidden = false; };
+})();
+</script>
+</body>
+</html>

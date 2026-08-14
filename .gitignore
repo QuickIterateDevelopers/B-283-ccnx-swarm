@@ -1,0 +1,27 @@
+# C ビルド生成物(client/ 直下に出力)
+client/*.o
+client/*.a
+client/libccnx.a
+client/swarm_robot
+client/codec_test
+test/*.o
+
+# Go ビルド生成物
+server/swarmd
+server/ccnxcli
+server/**/*.test
+
+# 相互運用ハーネスの一時出力
+/tmp/b283_*.txt
+
+# エディタ / OS
+.DS_Store
+*.swp
+*~
+.vscode/
+.idea/
+
+# デバッグ
+*.dSYM/
+core
+*.log
